@@ -1,6 +1,6 @@
 # mvvm_project
 
-test contructor mvvm.
+A new Flutter project.
 
 ## Getting Started
 
