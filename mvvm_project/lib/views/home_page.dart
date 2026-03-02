@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:mvvm_project/di.dart';
 import 'package:mvvm_project/views/login_page.dart';
+import 'package:mvvm_project/views/medication_wizard_page.dart';
+import 'package:provider/provider.dart';
 
 class HomePage extends StatelessWidget {
   final String userName;
@@ -81,6 +84,17 @@ class MenuSection extends StatelessWidget {
             label: 'Quản lý nhắc việc',
             iconColor: Colors.orange,
             iconBackgroundColor: Colors.white,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChangeNotifierProvider(
+                    create: (_) => buildMedicationVM(),
+                    child: const MedicationWizardPage(),
+                  ),
+                ),
+              );
+            },
           ),
           MenuItem(
             icon: Icons.shopping_cart,
