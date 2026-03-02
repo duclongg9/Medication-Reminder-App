@@ -9,6 +9,7 @@ class MedicationViewModel extends ChangeNotifier {
 
   bool loading = false;
   String? error;
+  String? dateValidationMessage;
 
   int step = 0;
   String planName = '';
@@ -31,7 +32,8 @@ class MedicationViewModel extends ChangeNotifier {
       .where((name) => name.toLowerCase().contains(searchKeyword.trim().toLowerCase()))
       .toList();
 
-  bool get canContinueStep1 => planName.trim().isNotEmpty && startDate != null && endDate != null;
+  bool get canContinueStep1 =>
+      planName.trim().isNotEmpty && startDate != null && endDate != null && isDateRangeValid;
 
   bool get canContinueStep2 => medicines.isNotEmpty && medicines.every((m) => m.isCompleted);
 
@@ -73,8 +75,20 @@ class MedicationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateDoseText(String value) {
-    activeMedicine.doseText = value;
+  bool get isDateRangeValid {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (startDate == null || endDate == null) return true;
+    if (_toDateOnly(startDate!).isBefore(today)) return false;
+    if (_toDateOnly(endDate!).isAtSameMomentAs(_toDateOnly(startDate!))) return false;
+    if (_toDateOnly(endDate!).isBefore(_toDateOnly(startDate!))) return false;
+    return true;
+  }
+
+  void updateDoseForSelectedTime(String value) {
+    if (selectedTime == null) return;
+    final time = activeMedicine.times[selectedTime!];
+    activeMedicine.updateDoseForTime(time, value);
     notifyListeners();
   }
 
@@ -84,7 +98,7 @@ class MedicationViewModel extends ChangeNotifier {
     } else {
       endDate = value;
     }
-    notifyListeners();
+    _validateDates();
   }
 
   void previousStep() {
@@ -142,19 +156,51 @@ class MedicationViewModel extends ChangeNotifier {
   void addTime(String value) {
     if (activeMedicine.times.contains(value)) return;
     activeMedicine.times.add(value);
+    activeMedicine.updateDoseForTime(value, '');
     selectedTime = activeMedicine.times.length - 1;
     notifyListeners();
   }
 
   void removeSelectedTime() {
     if (selectedTime == null || activeMedicine.times.length <= 1) return;
-    activeMedicine.times.removeAt(selectedTime!);
+    final removedTime = activeMedicine.times.removeAt(selectedTime!);
+    activeMedicine.dosesByTime.remove(removedTime);
     selectedTime = null;
     notifyListeners();
   }
 
   void updateImage(String imageUrl) {
     activeMedicine.imageUrl = imageUrl;
+    notifyListeners();
+  }
+
+  String selectedDoseText() {
+    if (selectedTime == null) return '';
+    final time = activeMedicine.times[selectedTime!];
+    return activeMedicine.doseFor(time);
+  }
+
+  DateTime _toDateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+
+  void _validateDates() {
+    dateValidationMessage = null;
+    if (startDate == null || endDate == null) {
+      notifyListeners();
+      return;
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = _toDateOnly(startDate!);
+    final end = _toDateOnly(endDate!);
+
+    if (start.isBefore(today)) {
+      dateValidationMessage = 'Ngày bắt đầu không được nhỏ hơn ngày hiện tại.';
+    } else if (end.isAtSameMomentAs(start)) {
+      dateValidationMessage = 'Ngày kết thúc phải khác ngày bắt đầu.';
+    } else if (end.isBefore(start)) {
+      dateValidationMessage = 'Ngày kết thúc phải lớn hơn ngày bắt đầu.';
+    }
     notifyListeners();
   }
 }

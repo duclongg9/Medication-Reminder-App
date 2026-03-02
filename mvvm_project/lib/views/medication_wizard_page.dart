@@ -36,6 +36,10 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
     final vm = context.watch<MedicationViewModel>();
     _syncControllers(vm);
 
+    final title = vm.step == 1 && vm.planName.trim().isNotEmpty
+        ? 'Tạo lịch trình uống thuốc cho: ${vm.planName.trim()}'
+        : 'Tạo lịch trình uống thuốc';
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -58,9 +62,9 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
             children: [
               Text('${vm.step + 1} / 3', style: const TextStyle(fontSize: 18, color: Colors.grey)),
               const SizedBox(height: 8),
-              const Text(
-                'Tạo lịch trình uống thuốc',
-                style: TextStyle(fontSize: 42, fontWeight: FontWeight.w800, height: 1.05),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, height: 1.05),
               ),
               const SizedBox(height: 14),
               if (vm.loading) const LinearProgressIndicator(),
@@ -83,6 +87,12 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
                           if (vm.step < 2) {
                             context.read<MedicationViewModel>().nextStep();
                           } else {
+                            final count = vm.medicines.length;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Tạo lịch trình thuốc thành công với $count loại thuốc'),
+                              ),
+                            );
                             Navigator.pop(context);
                           }
                         }
@@ -118,6 +128,11 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
           trailing: const Icon(Icons.calendar_today_outlined),
           onTap: () => _pickDate(context, isStart: false),
         ),
+        if (vm.dateValidationMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(vm.dateValidationMessage!, style: const TextStyle(color: Colors.red)),
+          ),
         const SizedBox(height: 8),
         const Text(
           'Lựa chọn ngày bắt đầu - kết thúc và đặt tên cho liệu trình của bạn.',
@@ -128,12 +143,16 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
   }
 
   Widget _buildStep2(BuildContext context, MedicationViewModel vm) {
+    final canPickImage = vm.activeMedicine.name.trim().isNotEmpty;
+    final canConfigureTime = vm.activeMedicine.imageUrl != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          height: 88,
+          height: 90,
           child: ListView.separated(
+            physics: const BouncingScrollPhysics(),
             scrollDirection: Axis.horizontal,
             itemCount: vm.medicines.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
@@ -146,20 +165,31 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    CircleAvatar(
-                      radius: selected ? 32 : 28,
-                      backgroundColor: selected ? Colors.teal.shade100 : Colors.grey.shade200,
-                      backgroundImage: medicine.imageUrl != null ? NetworkImage(medicine.imageUrl!) : null,
-                      child: medicine.imageUrl == null
-                          ? Text(medicine.name.isEmpty ? '+' : medicine.name[0], style: const TextStyle(fontSize: 22))
-                          : null,
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: selected ? Colors.black : Colors.transparent,
+                          width: selected ? 3 : 0,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: selected ? 32 : 28,
+                        backgroundColor: selected ? Colors.teal.shade100 : Colors.grey.shade200,
+                        backgroundImage: medicine.imageUrl != null ? NetworkImage(medicine.imageUrl!) : null,
+                        child: medicine.imageUrl == null
+                            ? Text(medicine.name.isEmpty ? '+' : medicine.name[0], style: const TextStyle(fontSize: 22))
+                            : null,
+                      ),
                     ),
                     if (vm.deleteMode)
                       Positioned(
                         right: -2,
                         top: -2,
                         child: GestureDetector(
-                          onTap: () => context.read<MedicationViewModel>().deleteMedicine(index),
+                          onTap: () => _confirmDeleteMedicine(context, index),
                           child: const CircleAvatar(
                             radius: 10,
                             backgroundColor: Colors.red,
@@ -216,10 +246,12 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
                   style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold),
                 ),
                 TextButton.icon(
-                  onPressed: () => _pickImage(context),
+                  onPressed: canPickImage ? () => _pickImage(context) : null,
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: Text(vm.activeMedicine.imageUrl == null ? 'Chọn ảnh' : 'Thay ảnh (sửa)'),
                 ),
+                if (!canPickImage)
+                  const Text('Vui lòng chọn tên thuốc trước khi chọn ảnh.', style: TextStyle(color: Colors.black54)),
                 if (vm.activeMedicine.imageUrl != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
@@ -229,6 +261,8 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
                     ),
                   ),
                 const SizedBox(height: 6),
+                if (!canConfigureTime)
+                  const Text('Hãy chọn ảnh trước, sau đó thêm thời gian uống.', style: TextStyle(color: Colors.black54)),
                 Wrap(
                   spacing: 8,
                   children: List.generate(vm.activeMedicine.times.length, (index) {
@@ -236,25 +270,31 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
                     return ChoiceChip(
                       label: Text(time),
                       selected: vm.selectedTime == index,
-                      onSelected: (_) => context.read<MedicationViewModel>().selectTime(index),
+                      onSelected: canConfigureTime ? (_) => context.read<MedicationViewModel>().selectTime(index) : null,
                     );
                   }),
                 ),
                 Row(
                   children: [
-                    IconButton(onPressed: () => _addTime(context), icon: const Icon(Icons.add_box_outlined)),
+                    IconButton(
+                      onPressed: canConfigureTime ? () => _addTime(context) : null,
+                      icon: const Icon(Icons.add_box_outlined),
+                    ),
                     if (vm.selectedTime != null)
                       IconButton(
-                        onPressed: () => context.read<MedicationViewModel>().removeSelectedTime(),
+                        onPressed: canConfigureTime ? () => context.read<MedicationViewModel>().removeSelectedTime() : null,
                         icon: const Icon(Icons.delete, color: Colors.black),
                       ),
                   ],
                 ),
-                TextField(
-                  controller: _doseCtrl,
-                  decoration: const InputDecoration(hintText: 'Nhập liều lượng'),
-                  onChanged: (value) => context.read<MedicationViewModel>().updateDoseText(value),
-                ),
+                if (vm.selectedTime != null)
+                  TextField(
+                    controller: _doseCtrl,
+                    decoration: const InputDecoration(hintText: 'Nhập liều lượng cho khung giờ đã chọn'),
+                    onChanged: (value) => context.read<MedicationViewModel>().updateDoseForSelectedTime(value),
+                  )
+                else
+                  const Text('Chạm vào một khung giờ để nhập liều lượng riêng.', style: TextStyle(color: Colors.black54)),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: () => context.read<MedicationViewModel>().createMedicine(),
@@ -288,7 +328,7 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
               children: [
                 ...medicine.times.map(
                   (time) => ListTile(
-                    title: Text(medicine.doseText),
+                    title: Text(medicine.doseFor(time)),
                     trailing: Text(time, style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
@@ -302,11 +342,14 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
 
   Future<void> _pickDate(BuildContext context, {required bool isStart}) async {
     final now = DateTime.now();
+    final vm = context.read<MedicationViewModel>();
+    final initialDate = isStart ? (vm.startDate ?? now) : (vm.endDate ?? vm.startDate ?? now);
+
     final date = await showDatePicker(
       context: context,
-      firstDate: DateTime(now.year - 1),
+      firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(now.year + 2),
-      initialDate: now,
+      initialDate: DateTime(initialDate.year, initialDate.month, initialDate.day),
     );
     if (date == null || !context.mounted) return;
     context.read<MedicationViewModel>().setDate(isStart: isStart, value: date);
@@ -342,6 +385,23 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
     context.read<MedicationViewModel>().updateImage(image);
   }
 
+  Future<void> _confirmDeleteMedicine(BuildContext context, int index) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Xóa thuốc'),
+        content: const Text('Bạn có chắc muốn xóa thuốc này không?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa')),
+        ],
+      ),
+    );
+    if (shouldDelete == true && context.mounted) {
+      context.read<MedicationViewModel>().deleteMedicine(index);
+    }
+  }
+
   void _syncControllers(MedicationViewModel vm) {
     if (_planNameCtrl.text != vm.planName) {
       _planNameCtrl.text = vm.planName;
@@ -351,8 +411,9 @@ class _MedicationWizardPageState extends State<MedicationWizardPage> {
       _searchCtrl.text = vm.searchKeyword;
       _searchCtrl.selection = TextSelection.collapsed(offset: _searchCtrl.text.length);
     }
-    if (_doseCtrl.text != vm.activeMedicine.doseText) {
-      _doseCtrl.text = vm.activeMedicine.doseText;
+    final dose = vm.selectedDoseText();
+    if (_doseCtrl.text != dose) {
+      _doseCtrl.text = dose;
       _doseCtrl.selection = TextSelection.collapsed(offset: _doseCtrl.text.length);
     }
   }
